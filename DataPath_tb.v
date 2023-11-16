@@ -27,7 +27,7 @@ reg[1:0] ledSel;
 wire [15:0] Led_out;
  DataPath DP(clk, rst, ledSel, Led_out);
 initial begin
-clk = 1'b0;
+clk = 1'b1;
 forever #(5) clk = ~clk;
 end
 
@@ -37,5 +37,7 @@ ledSel = 0;
 #10
 rst = 0;
 ledSel = 1;
+#3000
+$finish;
 end
 endmodule

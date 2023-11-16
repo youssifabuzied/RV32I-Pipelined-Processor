@@ -1,18 +1,55 @@
 module DataPath(input clk, input rst, input[1:0] ledSel, output reg [15:0] Led_out, input[3:0] ssdSel, output reg [12:0] ssd);
+wire sclk;
+clockDivider cd( clk, rst,  sclk);
+reg [2:0]ctrl_1;
+reg [1:0]ctrl_2;
+reg ctrl_3;
+reg ctrl_4;
+reg [7:0]address;
+reg [31:0]write_val;
+wire [31:0] data_out;
+always @(*)begin
+if(sclk == 1) begin
+ctrl_1 = 3'b0;
+ctrl_2 = 2'b0;
+ctrl_3 = 1'b1;
+ctrl_4 = 1'b0;
+address = Q[7:0];
+write_val = 32'b0;
+instruction = data_out;
+mem_out = mem_out;
+
+end
+else
+begin
+ctrl_1 = EX_MEM_Ctrl[16:14];
+ctrl_2 = EX_MEM_Ctrl[13:12];
+ctrl_3 = EX_MEM_Ctrl[7];
+ctrl_4 = EX_MEM_Ctrl[2];
+address = EX_MEM_ALU_out[7:0];
+write_val = EX_MEM_RegR2;
+instruction = instruction;
+mem_out = data_out;
+
+
+end
+
+end
+DataMem DM(ctrl_1,ctrl_2, clk,ctrl_3, ctrl_4,address,write_val,data_out );
 
 // IF
 wire load;
 wire [31:0] Q;
 wire [31:0] D;
-N_bitRF PC(clk, rst, 1, D, Q);
-wire [31:0]instruction;
-InstMem IM(Q[7:2], instruction);
+N_bitRF PC(sclk, rst, 1, D, Q);
+reg [31:0]instruction;
+//InstMem IM(Q[7:2], instruction);
 wire[31:0] Adder2_out;
 RCA Adder2(4, Q, Adder2_out);
 
 //IF/ID
 wire [31:0] IF_ID_PC, IF_ID_Inst;
-N_bitRF #(64) IF_ID (clk,rst,1'b1,
+N_bitRF #(64) IF_ID (~sclk,rst,1'b1,
 {Q, instruction},
 {IF_ID_PC,IF_ID_Inst} );
 
@@ -46,7 +83,7 @@ wire [31:0] ID_EX_PC, ID_EX_RegR1, ID_EX_RegR2, ID_EX_Imm;
 wire [16:0] ID_EX_Ctrl;
 wire [3:0] ID_EX_Func;
 wire [4:0] ID_EX_Rs1, ID_EX_Rs2, ID_EX_Rd;
-N_bitRF #(164) ID_EX (clk,rst,1'b1,
+N_bitRF #(164) ID_EX (sclk,rst,1'b1,
 {IF_ID_PC, reg_out1, reg_out2, imm_out, {read_part, write_part,terminate, A_source, jump,Branch, MemRead, MemtoReg, ALUOp, MemWrite, ALUSrc, RegWrite},
  {IF_ID_Inst[14:12], IF_ID_Inst[30]}, IF_ID_Inst[19:15],
 IF_ID_Inst[24:20], IF_ID_Inst[11:7]},
@@ -81,7 +118,7 @@ wire [16:0] EX_MEM_Ctrl;
 wire [4:0] EX_MEM_Rd;
 wire [3:0]EX_MEM_flags;
 wire [31:0]EX_MEM_PC;
-N_bitRF #(158) EX_MEM (clk,rst,1'b1,
+N_bitRF #(158) EX_MEM (~sclk,rst,1'b1,
 {Adder1_out, ALU_out1, ID_EX_RegR2, ID_EX_Ctrl, ID_EX_Rd, {ALU_flag, sf,cf,vf}, ID_EX_Func,ID_EX_PC},
 { EX_MEM_BranchAddOut,EX_MEM_ALU_out, EX_MEM_RegR2, EX_MEM_Ctrl, EX_MEM_Rd, EX_MEM_flags, EX_MEM_Func,EX_MEM_PC} );
 
@@ -90,8 +127,7 @@ N_bitRF #(158) EX_MEM (clk,rst,1'b1,
 
 // MEM
 
-wire [31:0]mem_out;
-DataMem DM(EX_MEM_Ctrl[16:14],EX_MEM_Ctrl[13:12], clk,EX_MEM_Ctrl[7], EX_MEM_Ctrl[2],EX_MEM_ALU_out[7:0],EX_MEM_RegR2,mem_out );
+reg [31:0]mem_out;
 
 
 
@@ -111,7 +147,7 @@ wire [31:0] MEM_WB_Mem_out, MEM_WB_ALU_out;
 wire [16:0] MEM_WB_Ctrl;
 wire [4:0] MEM_WB_Rd;
 wire [31:0] MEM_WBPC4;
-N_bitRF #(118) MEM_WB (clk,rst,1'b1,
+N_bitRF #(118) MEM_WB (sclk,rst,1'b1,
 {mem_out, EX_MEM_ALU_out, EX_MEM_Ctrl, EX_MEM_Rd,Adder3_out},
 {MEM_WB_Mem_out, MEM_WB_ALU_out, MEM_WB_Ctrl, MEM_WB_Rd,MEM_WBPC4} );
 //WB
