@@ -92,18 +92,22 @@ ID_EX_Imm,ID_EX_Ctrl, ID_EX_Func,ID_EX_Rs1,ID_EX_Rs2,ID_EX_Rd} );
 
 
 // EX
-
+wire [1:0] ForwardA, ForwardB;
+Forwarding_Unit FU(ID_EX_Rs1, ID_EX_Rs2, EX_MEM_Rd, MEM_WB_Rd, EX_MEM_Ctrl[0], MEM_WB_Ctrl[0], ForwardA, ForwardB);
 wire [3:0] ALU_Selection;
 ALU_CU ALU_Control(ID_EX_Ctrl[5:3], ID_EX_Func[3:1], ID_EX_Func[0], ALU_Selection);
+wire [31:0] ALU_inB;
+MUX4x1 MUX_B(ForwardB, ID_EX_RegR2, reg_writedata, EX_MEM_ALU_out, EX_MEM_ALU_out,ALU_inB);
 wire [31:0] ALU_in2;
-nbit_MUX2x1 MUX1(ID_EX_Ctrl[1], ID_EX_RegR2, ID_EX_Imm, ALU_in2);
+nbit_MUX2x1 MUX1(ID_EX_Ctrl[1], ALU_inB, ID_EX_Imm, ALU_in2);
 wire[31:0] ALU_out1;
 wire ALU_flag;
 wire sf;
 wire cf, vf;
 wire [31:0]ALU_in1;
-nbit_MUX2x1 MUX6(ID_EX_Ctrl[10], ID_EX_RegR1, ID_EX_PC, ALU_in1);
-
+wire [31:0]ALU_in1temp;
+nbit_MUX2x1 MUX6(ID_EX_Ctrl[10], ID_EX_RegR1, ID_EX_PC, ALU_in1temp);
+MUX4x1 MUX_A(ForwardA, ALU_in1temp, reg_writedata, EX_MEM_ALU_out, EX_MEM_ALU_out, ALU_in1);
 ALU alu(ALU_in1, ALU_in2, ALU_Selection,ALU_out1,ALU_flag,sf, cf, vf);
 
 wire[31:0] Adder1_out;
@@ -119,7 +123,7 @@ wire [4:0] EX_MEM_Rd;
 wire [3:0]EX_MEM_flags;
 wire [31:0]EX_MEM_PC;
 N_bitRF #(158) EX_MEM (~sclk,rst,1'b1,
-{Adder1_out, ALU_out1, ID_EX_RegR2, ID_EX_Ctrl, ID_EX_Rd, {ALU_flag, sf,cf,vf}, ID_EX_Func,ID_EX_PC},
+{Adder1_out, ALU_out1, ALU_inB, ID_EX_Ctrl, ID_EX_Rd, {ALU_flag, sf,cf,vf}, ID_EX_Func,ID_EX_PC},
 { EX_MEM_BranchAddOut,EX_MEM_ALU_out, EX_MEM_RegR2, EX_MEM_Ctrl, EX_MEM_Rd, EX_MEM_flags, EX_MEM_Func,EX_MEM_PC} );
 
 
@@ -132,7 +136,8 @@ reg [31:0]mem_out;
 
 
 wire And_gate;
-Branching_Unit BU(EX_MEM_Ctrl[8], EX_MEM_Func[3:1], EX_MEM_flags[2], EX_MEM_flags[3],EX_MEM_flags[0], EX_MEM_flags[1],EX_MEM_Ctrl[9], And_gate);
+Branching_Unit BU(EX_MEM_Ctrl[8], EX_MEM_Func[3:1], EX_MEM_flags[2], EX_MEM_flags[3],EX_MEM_flags[0], EX_MEM_flags[1],EX_MEM_Ctrl[9],
+ And_gate);
 wire [31:0] new_pc;
 nbit_MUX2x1 MUX3(And_gate, Adder2_out, EX_MEM_BranchAddOut, new_pc);
 wire [31:0] new_pc1;
