@@ -41,16 +41,21 @@ DataMem DM(ctrl_1,ctrl_2, clk,ctrl_3, ctrl_4,address,write_val,data_out );
 wire load;
 wire [31:0] Q;
 wire [31:0] D;
-N_bitRF PC(sclk, rst, 1, D, Q);
+N_bitRF PC(sclk, rst, ~(end_execution), D, Q);
 reg [31:0]instruction;
 //InstMem IM(Q[7:2], instruction);
 wire[31:0] Adder2_out;
 RCA Adder2(4, Q, Adder2_out);
 
+wire end_execution;
+assign end_execution =  (IF_ID_instruction[6:2] == 5'b11100 && IF_ID_instruction[20] == 1'b1)? 1'b1 : 1'b0;
+
 //IF/ID
+wire [31:0]IF_ID_instruction;
+assign IF_ID_instruction= (And_gate && D != Q)? 32'b0000000_00000_00000_000_00000_0110011: instruction;
 wire [31:0] IF_ID_PC, IF_ID_Inst;
 N_bitRF #(64) IF_ID (~sclk,rst,1'b1,
-{Q, instruction},
+{Q, IF_ID_instruction},
 {IF_ID_PC,IF_ID_Inst} );
 
 
@@ -76,6 +81,9 @@ wire A_source;
 wire jump;
 CU control(IF_ID_Inst[6:2], IF_ID_Inst[14:12], IF_ID_Inst[20], Branch, MemRead,MemtoReg, ALUOp,MemWrite, ALUSrc,RegWrite,
  read_part, write_part, terminate, A_source, jump);
+ wire[16:0] flush_out;
+
+nbit_MUX2x1 #(17) MUX_stall(And_gate, {read_part, write_part,terminate, A_source, jump,Branch, MemRead, MemtoReg, ALUOp, MemWrite, ALUSrc, RegWrite},17'b0, flush_out);
 
 //ID/EX
 
@@ -84,7 +92,7 @@ wire [16:0] ID_EX_Ctrl;
 wire [3:0] ID_EX_Func;
 wire [4:0] ID_EX_Rs1, ID_EX_Rs2, ID_EX_Rd;
 N_bitRF #(164) ID_EX (sclk,rst,1'b1,
-{IF_ID_PC, reg_out1, reg_out2, imm_out, {read_part, write_part,terminate, A_source, jump,Branch, MemRead, MemtoReg, ALUOp, MemWrite, ALUSrc, RegWrite},
+{IF_ID_PC, reg_out1, reg_out2, imm_out, flush_out,
  {IF_ID_Inst[14:12], IF_ID_Inst[30]}, IF_ID_Inst[19:15],
 IF_ID_Inst[24:20], IF_ID_Inst[11:7]},
 {ID_EX_PC,ID_EX_RegR1,ID_EX_RegR2,
@@ -92,12 +100,12 @@ ID_EX_Imm,ID_EX_Ctrl, ID_EX_Func,ID_EX_Rs1,ID_EX_Rs2,ID_EX_Rd} );
 
 
 // EX
-wire [1:0] ForwardA, ForwardB;
-Forwarding_Unit FU(ID_EX_Rs1, ID_EX_Rs2, EX_MEM_Rd, MEM_WB_Rd, EX_MEM_Ctrl[0], MEM_WB_Ctrl[0], ForwardA, ForwardB);
+wire ForwardA, ForwardB;
+Forwarding_Unit FU(ID_EX_Rs1, ID_EX_Rs2, MEM_WB_Rd,  MEM_WB_Ctrl[0], ForwardA, ForwardB);
 wire [3:0] ALU_Selection;
 ALU_CU ALU_Control(ID_EX_Ctrl[5:3], ID_EX_Func[3:1], ID_EX_Func[0], ALU_Selection);
 wire [31:0] ALU_inB;
-MUX4x1 MUX_B(ForwardB, ID_EX_RegR2, reg_writedata, EX_MEM_ALU_out, EX_MEM_ALU_out,ALU_inB);
+nbit_MUX2x1 MUX_B(ForwardB, ID_EX_RegR2,  reg_writedata, ALU_inB);
 wire [31:0] ALU_in2;
 nbit_MUX2x1 MUX1(ID_EX_Ctrl[1], ALU_inB, ID_EX_Imm, ALU_in2);
 wire[31:0] ALU_out1;
@@ -107,7 +115,7 @@ wire cf, vf;
 wire [31:0]ALU_in1;
 wire [31:0]ALU_in1temp;
 nbit_MUX2x1 MUX6(ID_EX_Ctrl[10], ID_EX_RegR1, ID_EX_PC, ALU_in1temp);
-MUX4x1 MUX_A(ForwardA, ALU_in1temp, reg_writedata, EX_MEM_ALU_out, EX_MEM_ALU_out, ALU_in1);
+nbit_MUX2x1 MUX_A(ForwardA, ALU_in1temp, reg_writedata, ALU_in1);
 ALU alu(ALU_in1, ALU_in2, ALU_Selection,ALU_out1,ALU_flag,sf, cf, vf);
 
 wire[31:0] Adder1_out;
@@ -122,8 +130,13 @@ wire [16:0] EX_MEM_Ctrl;
 wire [4:0] EX_MEM_Rd;
 wire [3:0]EX_MEM_flags;
 wire [31:0]EX_MEM_PC;
+wire [16:0]ID_EX_Ctrlmiddle;
+assign ID_EX_Ctrlmiddle = (And_gate)?16'b0:ID_EX_Ctrl;
+wire [3:0] flags;
+assign flags = (And_gate)?4'b0:{ALU_flag, sf,cf,vf};
+
 N_bitRF #(158) EX_MEM (~sclk,rst,1'b1,
-{Adder1_out, ALU_out1, ALU_inB, ID_EX_Ctrl, ID_EX_Rd, {ALU_flag, sf,cf,vf}, ID_EX_Func,ID_EX_PC},
+{Adder1_out, ALU_out1, ALU_inB, ID_EX_Ctrlmiddle, ID_EX_Rd, flags, ID_EX_Func,ID_EX_PC},
 { EX_MEM_BranchAddOut,EX_MEM_ALU_out, EX_MEM_RegR2, EX_MEM_Ctrl, EX_MEM_Rd, EX_MEM_flags, EX_MEM_Func,EX_MEM_PC} );
 
 
@@ -140,10 +153,8 @@ Branching_Unit BU(EX_MEM_Ctrl[8], EX_MEM_Func[3:1], EX_MEM_flags[2], EX_MEM_flag
  And_gate);
 wire [31:0] new_pc;
 nbit_MUX2x1 MUX3(And_gate, Adder2_out, EX_MEM_BranchAddOut, new_pc);
-wire [31:0] new_pc1;
 
-nbit_MUX2x1 MUX10(EX_MEM_Ctrl[9], new_pc, EX_MEM_ALU_out, new_pc1);
-nbit_MUX2x1 MUX4(EX_MEM_Ctrl[11], new_pc1, EX_MEM_PC, D);
+nbit_MUX2x1 MUX10(EX_MEM_Ctrl[9], new_pc, EX_MEM_ALU_out, D);
 wire[31:0] Adder3_out;
 RCA Adder3(4, EX_MEM_PC, Adder3_out);
 

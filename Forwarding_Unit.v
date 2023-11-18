@@ -23,28 +23,26 @@
 module Forwarding_Unit(
 input [4:0] IDEX_rs1,
 input [4:0] IDEX_rs2,
-input [4:0] EXMEM_rd,
 input [4:0] MEMWB_rd,
-input EXMEM_Regwrite,
 input MEMWB_Regwrite,
-output reg [1:0] ForwardA,
-output reg [1:0] ForwardB
+output reg  ForwardA,
+output reg ForwardB
     );
     
     
 always@(*)begin
  if (MEMWB_Regwrite && (MEMWB_rd != 0 && MEMWB_rd == IDEX_rs1))begin
-    ForwardA = 01;
-    ForwardB = 00;
+    ForwardA = 1'b1;
+    ForwardB = 1'b0;
 end
 
 else if (MEMWB_Regwrite && (MEMWB_rd != 0 && MEMWB_rd == IDEX_rs2))begin
-    ForwardA = 00;
-    ForwardB = 01;
+    ForwardA = 1'b0;
+    ForwardB = 1'b1;
 end
 else begin
-ForwardA = 00;
-ForwardB = 00;
+ForwardA = 1'b0;
+ForwardB = 1'b0;
 end
 end
 endmodule
